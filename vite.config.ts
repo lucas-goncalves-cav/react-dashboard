@@ -12,5 +12,8 @@ export default defineConfig({
     // The default forks pool fails to spawn workers on some Windows setups.
     // Threads start faster and the suite has no worker isolation needs.
     pool: 'threads',
+    // The mock API adds 450ms per request on purpose, and some tests make
+    // several in sequence.
+    testTimeout: 15_000,
   },
 });
