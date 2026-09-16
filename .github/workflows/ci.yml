@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Lint, test and build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Check the bundle stays reasonable
+        run: |
+          size=$(du -sk dist | cut -f1)
+          echo "dist is ${size}KB"
+
+          # A dashboard with hand drawn charts has no excuse for a large
+          # bundle. This catches an accidental heavy dependency.
+          if [ "$size" -gt 1024 ]; then
+            echo "::error::dist grew past 1MB (${size}KB)."
+            exit 1
+          fi
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t react-dashboard:ci .
+
+      - name: Serve it and check it responds
+        run: |
+          docker run -d --name dashboard -p 8080:80 react-dashboard:ci
+
+          for _ in $(seq 1 20); do
+            if curl -fsS http://localhost:8080/ > /dev/null 2>&1; then
+              echo "The container is serving."
+              break
+            fi
+            sleep 2
+          done
+
+          curl -fsS http://localhost:8080/ | grep -q "React Dashboard"
+
+          # Client side routing must not 404 at the web server.
+          curl -fsS http://localhost:8080/orders | grep -q "React Dashboard"
+
+          echo "SPA fallback works."
+          docker rm -f dashboard
